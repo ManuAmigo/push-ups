@@ -134,8 +134,6 @@ async def any_text(message: Message):
 async def register_bot_commands(bot: Bot):
 
     commands = [
-        # BotCommand(command="start", description="Начать"),
-        # BotCommand(command="help", description="Список команд"),
         BotCommand(command="mystats", description="Моя статистика"),
         BotCommand(command="stats", description="Статистика группы"),
         BotCommand(command="changemydailystats", description="Изменить количество за сегодня"),
@@ -151,8 +149,6 @@ async def register_bot_commands(bot: Bot):
 async def main():
     if not os.path.exists("data.json"):
         storage.save(config, users.users)
-
-
 
     await register_bot_commands(bot)
 
