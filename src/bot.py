@@ -12,7 +12,6 @@ from services.openai_service import OpenAIClient
 from services.user_repository import UserRepository
 from services.pushups_parser import PushupsParser
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +32,7 @@ class BotService:
 
     async def handle_message(self, message: Message):
         if not message.text:
+            logger.debug("Получено пустое сообщение — игнорируем.")
             return
 
         user_id = message.from_user.id
@@ -41,19 +41,26 @@ class BotService:
         now = datetime.datetime.now()
         today = now.date()
 
+        logger.debug(f"Сообщение от @{username} ({user_id}): '{text}'")
+
         user = self.users.get(user_id)
         if not user:
+            logger.debug(f"Новый пользователь: @{username}")
             user = UserInfo(username=username, last_activity=now)
         else:
+            logger.debug(f"Пользователь найден: @{username} | Последняя активность: {user.last_activity}")
             user.username = username
             user.last_activity = now
 
         pushups, is_total = self.parser.extract_pushups_count(text)
+        logger.debug(f"Распознано: {pushups} отжиманий | {'итог за день' if is_total else 'добавление'}")
 
         if pushups <= 0:
+            logger.debug("Отжиманий не найдено — сообщение проигнорировано.")
             return
 
         if user.last_report_date != today:
+            logger.debug("Первый отчёт за сегодня — сохраняем как новый.")
             user.pushups_today = pushups
             user.total_pushups += pushups
             user.reported_today = True
@@ -63,13 +70,15 @@ class BotService:
                 delta = pushups - user.pushups_today
                 user.total_pushups += delta
                 user.pushups_today = pushups
+                logger.debug(f"Обновлён отчёт: новое значение {pushups} (изменение на {delta})")
             else:
                 user.pushups_today += pushups
                 user.total_pushups += pushups
+                logger.debug(f"Добавлены отжимания: +{pushups} → итого за сегодня: {user.pushups_today}")
 
         self.users.add_or_update(user_id, user)
         self.storage.save(self.config, self.users.all())
-
+        logger.debug("Статистика пользователя сохранена.")
 
         comment = None
         if self.openai:
@@ -79,12 +88,14 @@ class BotService:
                     f"который отжался {user.pushups_today} раз сегодня.",
                     system_prompt="Ты строгий и немногословный тренер. Говори лаконично и мотивирующе.",
                 )
+                logger.debug(f"Комментарий от OpenAI: {comment}")
             except Exception as e:
                 logger.warning(f"OpenAI fallback: {e}")
 
         comment = comment or "Продолжай в том же духе!"
         total_today = self.users.total_pushups_today(today)
 
+        logger.debug(f"Ответ пользователю @{user.username}: {user.pushups_today} сегодня, всего по группе: {total_today}")
         await message.answer(
             f"✅ @{user.username}: {user.pushups_today} отжиманий за сегодня.\n"
             f"💪 Группа: {total_today} сегодня.\n\n{comment}"
@@ -96,10 +107,12 @@ class BotService:
         user = self.users.get(user_id)
 
         if not user:
+            logger.debug(f"@{message.from_user.username}: запрос /mystats — пользователь не найден.")
             await message.answer("У вас пока нет статистики. Отправьте отчёт, чтобы начать!")
             return
 
         current_day, days_remaining = self.period.get_day_info(today)
+        logger.debug(f"@{user.username}: /mystats — {user.pushups_today} сегодня, {user.total_pushups} всего")
 
         text = f"📊 @{user.username}\n"
         text += f"Сегодня: {user.pushups_today} отжиманий\n"
@@ -113,6 +126,8 @@ class BotService:
         total_today = self.users.total_pushups_today(today)
         total_all = self.users.total_pushups_all_time()
         current_day, _ = self.period.get_day_info(today)
+
+        logger.debug(f"/stats: сегодня {total_today}, всего {total_all}")
 
         text = f"📈 Сегодня группа сделала: {total_today} отжиманий\n"
         text += f"🏆 Всего: {total_all} отжиманий\n"
@@ -132,12 +147,14 @@ class BotService:
 
         args = message.text.strip().split()
         if len(args) < 2 or not args[1].isdigit():
+            logger.debug("Некорректный формат /changemydailystats")
             await message.answer("Укажите новое количество отжиманий. Пример: /changemydailystats 100")
             return
 
         new_value = int(args[1])
         user = self.users.get(user_id)
         if not user:
+            logger.debug("Пользователь не найден при /changemydailystats")
             await message.answer("У вас пока нет статистики. Отправьте отчёт, чтобы начать!")
             return
 
@@ -151,21 +168,24 @@ class BotService:
         self.users.add_or_update(user_id, user)
         self.storage.save(self.config, self.users.all())
 
-
+        logger.debug(f"/changemydailystats: @{user.username} {old} ➡️ {new_value} (+{delta})")
         await message.answer(f"Изменено: {old} ➡️ {new_value} отжиманий.")
 
     async def handle_setgroup(self, message: Message):
         if message.chat.type not in ("group", "supergroup"):
+            logger.debug("/setgroup вызван не из группы")
             await message.answer("Эта команда работает только в группах.")
             return
 
         self.config.chat_id = message.chat.id
         self.storage.save(self.config, self.users.all())
 
+        logger.info(f"Группа настроена как основная: chat_id={self.config.chat_id}")
         await message.answer(f"Группа настроена! chat_id: <code>{self.config.chat_id}</code>")
 
     async def handle_config(self, message: Message):
         cfg = self.config
+        logger.debug(f"/config: {cfg}")
         text = (
             f"🛠 <b>Текущая конфигурация:</b>\n"
             f"Chat ID: <code>{cfg.chat_id}</code>\n"
@@ -181,6 +201,7 @@ class BotService:
             if member.is_bot:
                 continue
             username = member.username or member.full_name
+            logger.info(f"Новый участник: @{username}")
             await message.answer(
                 f"👋 Добро пожаловать, @{username}!\n"
                 f"Не забудь отчитаться сегодня! Пример: 25+25+25=75\n"
@@ -206,6 +227,8 @@ class BotService:
         ]
 
         top_total = self.users.sorted_by_total_pushups()[:5]
+
+        logger.debug(f"/adminstats: {total_users} участников, {active_today} активны, {inactive_4d} неактивны")
 
         text = (
             "<b>📊 Админ-статистика:</b>\n"

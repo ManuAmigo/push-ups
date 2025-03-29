@@ -5,7 +5,7 @@ from pathlib import Path
 LOGS_DIR = Path("logs")
 LOGS_DIR.mkdir(exist_ok=True)
 
-def setup_logger(name: str, log_file: str = "bot.log", level=logging.INFO) -> logging.Logger:
+def setup_logger(log_file: str = "bot.log", level=logging.DEBUG) -> logging.Logger:
     log_path = LOGS_DIR / log_file
 
     formatter = logging.Formatter(
@@ -19,15 +19,14 @@ def setup_logger(name: str, log_file: str = "bot.log", level=logging.INFO) -> lo
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
 
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
 
-    # Чтобы не дублировались логи, сбрасываем старые хендлеры
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    # Удаляем старые хендлеры
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
 
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    logger.propagate = True
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
 
-    return logger
+    return root_logger

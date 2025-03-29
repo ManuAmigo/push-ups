@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
-from aiogram.types import Message, ChatMemberUpdated
+from aiogram.types import Message, ChatMemberUpdated, BotCommand
 
 from dotenv import load_dotenv
 import os
@@ -18,9 +18,11 @@ from services.user_repository import UserRepository
 from utils.logger import setup_logger
 
 # Настройка логирования
-setup_logger("main")
+setup_logger()
 import logging
-logger = logging.getLogger("main")
+logger = logging.getLogger(__name__)
+
+
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -124,12 +126,30 @@ async def on_new_chat_member(event: ChatMemberUpdated):
 async def any_text(message: Message):
     await service.handle_message(message)
 
+async def register_bot_commands(bot: Bot):
+
+    commands = [
+        # BotCommand(command="start", description="Начать"),
+        # BotCommand(command="help", description="Список команд"),
+        BotCommand(command="mystats", description="Моя статистика"),
+        BotCommand(command="stats", description="Статистика группы"),
+        BotCommand(command="changemydailystats", description="Изменить количество за сегодня"),
+        BotCommand(command="setgroup", description="Назначить эту группу основной"),
+        BotCommand(command="config", description="Показать конфигурацию"),
+        BotCommand(command="adminstats", description="Админ-статистика"),
+    ]
+    await bot.delete_my_commands()
+    await bot.set_my_commands(commands)
 
 # === Запуск ===
 
 async def main():
     if not os.path.exists("data.json"):
         storage.save(config, users.users)
+
+
+
+    await register_bot_commands(bot)
 
     schedule_reminders(bot, service)
 
