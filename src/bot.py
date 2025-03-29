@@ -11,8 +11,9 @@ from services.data_service import Storage
 from services.openai_service import OpenAIClient
 from services.user_repository import UserRepository
 from services.pushups_parser import PushupsParser
+from utils.logger import get_named_logger
 
-logger = logging.getLogger(__name__)
+logger = get_named_logger()
 
 
 class BotService:

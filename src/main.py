@@ -15,12 +15,17 @@ from scheduler.reminder import schedule_reminders
 from services.openai_service import OpenAIClient
 from services.data_service import Storage
 from services.user_repository import UserRepository
+from utils.logger import setup_logger, get_named_logger
+
 from utils.logger import setup_logger
 
-# Настройка логирования
-setup_logger()
-import logging
-logger = logging.getLogger(__name__)
+# setup_logger("all")     # логировать всё (и библиотеки)
+# setup_logger("silent")  # полностью отключить логи
+    # логировать только main.py и bot.py
+
+
+setup_logger("named")  # или "all", или "silent"
+logger = get_named_logger()
 
 
 
