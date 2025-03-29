@@ -5,8 +5,9 @@ import datetime
 from aiogram import Bot
 from bot import BotService
 from models.bot_models import ActivityStatus
+from utils.logger import get_named_logger
 
-logger = logging.getLogger(__name__)
+logger = get_named_logger()
 
 scheduler = AsyncIOScheduler()
 

@@ -4,8 +4,9 @@ import logging
 from typing import Dict
 
 from models.bot_models import BotConfig, UserInfo
+from utils.logger import get_named_logger
 
-logger = logging.getLogger(__name__)
+logger = get_named_logger()
 
 
 class Storage:

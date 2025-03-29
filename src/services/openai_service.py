@@ -1,8 +1,9 @@
 import logging
 from openai import OpenAI
 from typing import Optional
+from utils.logger import get_named_logger
 
-logger = logging.getLogger(__name__)
+logger = get_named_logger()
 
 
 class OpenAIClient:

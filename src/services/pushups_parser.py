@@ -2,8 +2,9 @@ import re
 import logging
 from typing import Tuple, Optional
 from services.openai_service import OpenAIClient
+from utils.logger import get_named_logger
 
-logger = logging.getLogger(__name__)
+logger = get_named_logger()
 
 
 class PushupsParser:
