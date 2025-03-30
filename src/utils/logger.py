@@ -1,8 +1,9 @@
-# utils/logger.py
 import inspect
 import logging
 import pathlib
 import textwrap
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
 
 LOGS_DIR = Path("logs")
@@ -49,8 +50,26 @@ def get_named_logger(level=logging.DEBUG) -> logging.Logger:
     return logger
 
 
-def setup_logger(mode: str = "named", log_file: str = "bot.log", level=logging.INFO) -> None:
-    log_path = LOGS_DIR / log_file
+def cleanup_old_logs(days: int = 8):
+    cutoff_date = datetime.now() - timedelta(days=days)
+    for log_file in LOGS_DIR.glob("bot_*.log"):
+        match = re.search(r"bot_(\d{4}-\d{2}-\d{2})\.log", log_file.name)
+        if match:
+            try:
+                file_date = datetime.strptime(match.group(1), "%Y-%m-%d")
+                if file_date < cutoff_date:
+                    log_file.unlink()
+                    logging.getLogger("logger").info(f"🧹 Старый лог удалён: {log_file.name}")
+            except Exception as e:
+                logging.getLogger("logger").warning(f"⚠️ Не удалось удалить {log_file.name}: {e}")
+
+
+def setup_logger(mode: str = "named", log_file: str = None, level=logging.INFO) -> None:
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    log_filename = log_file or f"bot_{today_str}.log"
+    log_path = LOGS_DIR / log_filename
+
+    cleanup_old_logs(days=8)
 
     file_formatter = WrappedFormatter(
         fmt="%(asctime)s | %(levelname)s | %(name)s:%(lineno)d | %(message)s",
@@ -90,4 +109,4 @@ def setup_logger(mode: str = "named", log_file: str = "bot.log", level=logging.I
         root_logger.addHandler(console_handler)
 
     else:
-        raise ValueError("Неверный режим логгирования. Используй 'all', 'named' или 'silent'")
+        raise ValueError("❌ Неверный режим логгирования. Используй 'all', 'named' или 'silent'")
