@@ -1,6 +1,7 @@
-import logging
-from openai import OpenAI
 from typing import Optional
+from openai import OpenAI
+
+from models.bot_models import CommentContext
 from utils.logger import get_named_logger
 
 logger = get_named_logger()
@@ -8,7 +9,6 @@ logger = get_named_logger()
 
 class OpenAIClient:
     def __init__(self, api_key: Optional[str] = None):
-        api_key = api_key
         if not api_key:
             raise ValueError("OpenAI API ключ не задан.")
 
@@ -19,18 +19,24 @@ class OpenAIClient:
             logger.error(f"Ошибка инициализации OpenAI API: {e}")
             raise
 
-    def generate_comment(self, user_prompt: str, system_prompt: Optional[str] = None, fallback: bool = True) -> str:
+    def generate_comment(
+        self,
+        user_prompt: str,
+        context: CommentContext = CommentContext.REPORT,
+        fallback: bool = True,
+        system_prompt: Optional[str] = None,
+    ) -> str:
         """
         Генерация короткого комментария или анализа на основе промпта пользователя.
 
         :param user_prompt: текст от пользователя
-        :param system_prompt: настройка роли (по умолчанию: строгий тренер)
+        :param context: контекст генерации (персональный, групповой, отчётный)
         :param fallback: возвращать ли заглушку в случае ошибки
+        :param system_prompt: override — если указан, будет использоваться вместо шаблона по context
         :return: строка с ответом
         """
-        system_prompt = system_prompt or (
-            "Ты строгий и немногословный тренер. Говори лаконично и мотивирующе."
-        )
+
+        system_prompt = system_prompt or self._get_system_prompt(context)
 
         try:
             response = self.client.chat.completions.create(
@@ -49,3 +55,17 @@ class OpenAIClient:
             if fallback:
                 return "Сила в постоянстве."
             raise
+
+    @staticmethod
+    def _get_system_prompt(context: CommentContext) -> str:
+        """
+        Возвращает системный prompt в зависимости от типа контекста.
+        """
+        match context:
+            case CommentContext.REPORT:
+                return "Ты строгий и немногословный тренер. Говори лаконично и мотивирующе."
+            case CommentContext.DAILY_STATS:
+                return "Ты старший тренер. Подводишь итоги дня: строго, с уважением и юмором."
+            case CommentContext.PERSONAL:
+                return "Ты опытный наставник. Мотивируешь человека продолжать путь. Будь философски краток."
+        return "Ты строгий тренер."

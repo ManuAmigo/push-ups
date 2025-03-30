@@ -1,12 +1,11 @@
 import datetime
-import logging
 from typing import Optional
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import Message
 
-from models.bot_models import BotConfig, UserInfo, ChallengePeriod
+from models.bot_models import BotConfig, UserInfo, ChallengePeriod, CommentContext
 from services.data_service import Storage
 from services.openai_service import OpenAIClient
 from services.user_repository import UserRepository
@@ -29,29 +28,32 @@ class BotService:
         self.storage = storage
         self.openai = openai_client
         self.parser = PushupsParser(openai_client)
-        self.period = ChallengePeriod(config.challenge_start_date, config.challenge_end_date)
+        self.period = ChallengePeriod(
+            start_date=config.challenge_start_date,
+            end_date=config.challenge_end_date
+        )
 
-    async def handle_message(self, message: Message):
+    async def handle_message(self, message: Message) -> None:
         if not message.text:
             logger.debug("Получено пустое сообщение — игнорируем.")
             return
 
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
-        text = message.text
+        text = message.text.strip()
         now = datetime.datetime.now()
         today = now.date()
 
         logger.debug(f"Сообщение от @{username} ({user_id}): '{text}'")
 
-        user = self.users.get(user_id)
-        if not user:
-            logger.debug(f"Новый пользователь: @{username}")
-            user = UserInfo(username=username, last_activity=now)
-        else:
+        user = self.users.get(user_id) or UserInfo(username=username, last_activity=now)
+        if user.last_activity:
             logger.debug(f"Пользователь найден: @{username} | Последняя активность: {user.last_activity}")
-            user.username = username
-            user.last_activity = now
+        else:
+            logger.debug(f"Новый пользователь: @{username}")
+
+        user.username = username
+        user.last_activity = now
 
         pushups, is_total = self.parser.extract_pushups_count(text)
         logger.debug(f"Распознано: {pushups} отжиманий | {'итог за день' if is_total else 'добавление'}")
@@ -81,30 +83,33 @@ class BotService:
         self.storage.save(self.config, self.users.all())
         logger.debug("Статистика пользователя сохранена.")
 
-        comment = None
+        comment = "Продолжай в том же духе!"
         if self.openai:
             try:
                 comment = self.openai.generate_comment(
-                    f"Дай краткий мотивирующий комментарий для @{user.username}, "
-                    f"который отжался {user.pushups_today} раз сегодня.",
-                    system_prompt="Ты строгий и немногословный тренер. Говори лаконично и мотивирующе.",
+                    user_prompt=(
+                        f"Дай краткий мотивирующий комментарий для @{user.username}, "
+                        f"который отжался {user.pushups_today} раз сегодня."
+                    ),
+                    context=CommentContext.REPORT
                 )
                 logger.debug(f"Комментарий от OpenAI: {comment}")
             except Exception as e:
                 logger.warning(f"OpenAI fallback: {e}")
 
-        comment = comment or "Продолжай в том же духе!"
-        total_today = self.users.total_pushups_today(today)
 
-        logger.debug(f"Ответ пользователю @{user.username}: {user.pushups_today} сегодня, всего по группе: {total_today}")
+        total_today = self.users.total_pushups_today(today)
+        logger.debug(
+            f"Ответ пользователю @{user.username}: {user.pushups_today} сегодня, всего по группе: {total_today}"
+        )
+
         await message.answer(
             f"✅ @{user.username}: {user.pushups_today} отжиманий за сегодня.\n"
             f"💪 Группа: {total_today} сегодня.\n\n{comment}"
         )
 
-    async def handle_mystats(self, message: Message):
+    async def handle_mystats(self, message: Message) -> None:
         user_id = message.from_user.id
-        today = datetime.date.today()
         user = self.users.get(user_id)
 
         if not user:
@@ -112,17 +117,19 @@ class BotService:
             await message.answer("У вас пока нет статистики. Отправьте отчёт, чтобы начать!")
             return
 
+        today = datetime.date.today()
         current_day, days_remaining = self.period.get_day_info(today)
+
         logger.debug(f"@{user.username}: /mystats — {user.pushups_today} сегодня, {user.total_pushups} всего")
 
-        text = f"📊 @{user.username}\n"
-        text += f"Сегодня: {user.pushups_today} отжиманий\n"
-        text += f"Всего: {user.total_pushups} отжиманий\n"
-        text += f"День челленджа: #{current_day} (осталось {days_remaining})"
+        await message.answer(
+            f"📊 @{user.username}\n"
+            f"Сегодня: {user.pushups_today} отжиманий\n"
+            f"Всего: {user.total_pushups} отжиманий\n"
+            f"День челленджа: #{current_day} (осталось {days_remaining})"
+        )
 
-        await message.answer(text)
-
-    async def handle_stats(self, message: Message):
+    async def handle_stats(self, message: Message) -> None:
         today = datetime.date.today()
         total_today = self.users.total_pushups_today(today)
         total_all = self.users.total_pushups_all_time()
@@ -130,23 +137,24 @@ class BotService:
 
         logger.debug(f"/stats: сегодня {total_today}, всего {total_all}")
 
-        text = f"📈 Сегодня группа сделала: {total_today} отжиманий\n"
-        text += f"🏆 Всего: {total_all} отжиманий\n"
-        text += f"📅 День челленджа: #{current_day}\n\n"
-
         top_today = self.users.sorted_by_pushups_today(today)
+        top_list = ""
         if top_today:
-            text += "🔥 Топ за сегодня:\n"
+            top_list += "🔥 Топ за сегодня:\n"
             for i, (uid, u) in enumerate(top_today, 1):
-                text += f"{i}. @{u.username}: {u.pushups_today}\n"
+                top_list += f"{i}. @{u.username}: {u.pushups_today}\n"
 
-        await message.answer(text)
+        await message.answer(
+            f"📈 Сегодня группа сделала: {total_today} отжиманий\n"
+            f"🏆 Всего: {total_all} отжиманий\n"
+            f"📅 День челленджа: #{current_day}\n\n"
+            f"{top_list}"
+        )
 
-    async def handle_change_stat(self, message: Message):
+    async def handle_change_stat(self, message: Message) -> None:
         user_id = message.from_user.id
-        today = datetime.date.today()
-
         args = message.text.strip().split()
+
         if len(args) < 2 or not args[1].isdigit():
             logger.debug("Некорректный формат /changemydailystats")
             await message.answer("Укажите новое количество отжиманий. Пример: /changemydailystats 100")
@@ -154,13 +162,16 @@ class BotService:
 
         new_value = int(args[1])
         user = self.users.get(user_id)
+
         if not user:
             logger.debug("Пользователь не найден при /changemydailystats")
             await message.answer("У вас пока нет статистики. Отправьте отчёт, чтобы начать!")
             return
 
-        old = user.pushups_today
-        delta = new_value - old
+        today = datetime.date.today()
+        old_value = user.pushups_today
+        delta = new_value - old_value
+
         user.pushups_today = new_value
         user.total_pushups += delta
         user.last_report_date = today
@@ -169,10 +180,10 @@ class BotService:
         self.users.add_or_update(user_id, user)
         self.storage.save(self.config, self.users.all())
 
-        logger.debug(f"/changemydailystats: @{user.username} {old} ➡️ {new_value} (+{delta})")
-        await message.answer(f"Изменено: {old} ➡️ {new_value} отжиманий.")
+        logger.debug(f"/changemydailystats: @{user.username} {old_value} ➡️ {new_value} (+{delta})")
+        await message.answer(f"Изменено: {old_value} ➡️ {new_value} отжиманий.")
 
-    async def handle_setgroup(self, message: Message):
+    async def handle_setgroup(self, message: Message) -> None:
         if message.chat.type not in ("group", "supergroup"):
             logger.debug("/setgroup вызван не из группы")
             await message.answer("Эта команда работает только в группах.")
@@ -184,10 +195,10 @@ class BotService:
         logger.info(f"Группа настроена как основная: chat_id={self.config.chat_id}")
         await message.answer(f"Группа настроена! chat_id: <code>{self.config.chat_id}</code>")
 
-    async def handle_config(self, message: Message):
+    async def handle_config(self, message: Message) -> None:
         cfg = self.config
         logger.debug(f"/config: {cfg}")
-        text = (
+        await message.answer(
             f"🛠 <b>Текущая конфигурация:</b>\n"
             f"Chat ID: <code>{cfg.chat_id}</code>\n"
             f"Напоминание: <b>{cfg.reminder_time}</b>\n"
@@ -195,9 +206,8 @@ class BotService:
             f"Удаление: {cfg.inactivity_days} дн\n"
             f"Челлендж: {cfg.challenge_start_date} → {cfg.challenge_end_date}"
         )
-        await message.answer(text)
 
-    async def handle_welcome_new(self, message: Message):
+    async def handle_welcome_new(self, message: Message) -> None:
         for member in message.new_chat_members:
             if member.is_bot:
                 continue
@@ -209,7 +219,7 @@ class BotService:
                 f"Команды: /mystats, /stats"
             )
 
-    async def handle_adminstats(self, message: Message, bot: Bot):
+    async def handle_adminstats(self, message: Message, bot: Bot) -> None:
         try:
             member = await bot.get_chat_member(message.chat.id, message.from_user.id)
             if member.status not in ("creator", "administrator"):

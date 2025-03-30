@@ -1,33 +1,22 @@
 import asyncio
+import os
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.types import Message, ChatMemberUpdated, BotCommand
-
 from dotenv import load_dotenv
-import os
 
 from bot import BotService
 from config import settings
-from models.bot_models import BotConfig
 from scheduler.reminder import schedule_reminders
 from services.openai_service import OpenAIClient
 from services.data_service import Storage
 from services.user_repository import UserRepository
 from utils.logger import setup_logger, get_named_logger
 
-from utils.logger import setup_logger
-
-# setup_logger("all")     # логировать всё (и библиотеки)
-# setup_logger("silent")  # полностью отключить логи
-    # логировать только main.py и bot.py
-
-
-setup_logger("named")  # или "all", или "silent"
+setup_logger("named")
 logger = get_named_logger()
-
-
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -45,12 +34,15 @@ bot = Bot(
 dp = Dispatcher()
 
 # Загрузка данных
-storage = Storage("data.json")
+storage = Storage(settings.DATA_PATH)
 loaded = storage.load()
 config = loaded["config"]
-if isinstance(config, dict):
-    config = BotConfig.from_dict(config)
 users = UserRepository(loaded["user_data"])
+
+# Если конфиг повреждён — заменим на дефолт из settings
+if not isinstance(config, BotService.__init__.__annotations__["config"]):
+    logger.warning("Конфиг повреждён или пуст. Используется дефолтный из settings.")
+    config = settings.to_bot_config()
 
 # Инициализация OpenAI
 openai_client = None
@@ -79,7 +71,8 @@ async def help_cmd(message: Message):
         "/stats — статистика всей группы\n"
         "/changemydailystats N — изменить количество за сегодня\n"
         "/setgroup — назначить эту группу основной\n"
-        "/config — показать текущую конфигурацию\n\n"
+        "/config — показать текущую конфигурацию\n"
+        "/adminstats — статистика по группе (только для админов)\n\n"
         "Пример отчёта: 25+25+25=75"
     )
 
@@ -107,7 +100,6 @@ async def config_cmd(message: Message):
 async def adminstats_cmd(message: Message):
     await service.handle_adminstats(message, bot)
 
-
 # === Приветствие новых участников ===
 
 @dp.chat_member()
@@ -124,7 +116,6 @@ async def on_new_chat_member(event: ChatMemberUpdated):
         )
         await service.handle_welcome_new(fake_message)
 
-
 # === Обработка всех сообщений ===
 
 @dp.message()
@@ -132,7 +123,6 @@ async def any_text(message: Message):
     await service.handle_message(message)
 
 async def register_bot_commands(bot: Bot):
-
     commands = [
         BotCommand(command="mystats", description="Моя статистика"),
         BotCommand(command="stats", description="Статистика группы"),
@@ -147,7 +137,7 @@ async def register_bot_commands(bot: Bot):
 # === Запуск ===
 
 async def main():
-    if not os.path.exists("data.json"):
+    if not os.path.exists(settings.DATA_PATH):
         storage.save(config, users.users)
 
     await register_bot_commands(bot)

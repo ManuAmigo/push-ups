@@ -1,10 +1,10 @@
 import json
 import os
-import logging
 from typing import Dict
 
 from models.bot_models import BotConfig, UserInfo
 from utils.logger import get_named_logger
+from config import settings
 
 logger = get_named_logger()
 
@@ -18,18 +18,19 @@ class Storage:
         if not os.path.exists(self.path):
             logger.warning(f"Файл {self.path} не найден. Используется конфигурация по умолчанию.")
             return {
-                "config": BotConfig().to_dict(),
+                "config": self.default_config(),
                 "user_data": {}
             }
 
         try:
-            with open(self.path, 'r') as f:
+            with open(self.path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            config = BotConfig.from_dict(data.get("config", {}))
+            config = BotConfig.model_validate(data.get("config", {}))
+
             user_data_raw = data.get("user_data", {})
             user_data = {
-                int(uid): UserInfo.from_dict(info)
+                int(uid): UserInfo.model_validate(info)
                 for uid, info in user_data_raw.items()
             }
 
@@ -41,7 +42,7 @@ class Storage:
         except Exception as e:
             logger.error(f"Ошибка при загрузке данных: {e}")
             return {
-                "config": BotConfig(),
+                "config": self.default_config(),
                 "user_data": {}
             }
 
@@ -49,17 +50,21 @@ class Storage:
         """Сохраняет данные в JSON-файл"""
         try:
             serializable_data = {
-                "config": config.to_dict(),
+                "config": config.model_dump(mode="json"),
                 "user_data": {
-                    str(uid): user.to_dict()
+                    str(uid): user.model_dump(mode="json")
                     for uid, user in user_data.items()
                 }
             }
 
-            with open(self.path, 'w') as f:
-                json.dump(serializable_data, f, indent=4)  # type: ignore[arg-type]
+            with open(self.path, 'w', encoding='utf-8') as f:
+                json.dump(serializable_data, f, indent=4) # qo
 
             logger.info("Данные успешно сохранены")
 
         except Exception as e:
             logger.error(f"Ошибка при сохранении данных: {e}")
+
+    @staticmethod
+    def default_config() -> BotConfig:
+        return settings.to_bot_config()  # ✅ Используем единый источник правды

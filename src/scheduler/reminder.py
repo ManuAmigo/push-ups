@@ -1,17 +1,17 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-import logging
 import datetime
 from aiogram import Bot
+
 from bot import BotService
 from models.bot_models import ActivityStatus
 from utils.logger import get_named_logger
 
 logger = get_named_logger()
-
 scheduler = AsyncIOScheduler()
 
-def schedule_reminders(bot: Bot, service: BotService):
+
+def schedule_reminders(bot: Bot, service: BotService) -> None:
     """
     Планирует ежедневное напоминание и проверку неактивности.
     """
@@ -43,16 +43,19 @@ def schedule_reminders(bot: Bot, service: BotService):
     )
 
     scheduler.start()
-    logger.info(f"Планировщик активирован: напоминание в {reminder_time}, предупреждение в 20:00, удаление в 23:59")
+    logger.info(
+        f"Планировщик активирован: напоминание в {reminder_time}, "
+        f"предупреждение в 20:00, удаление в 23:59"
+    )
 
 
-async def send_daily_reminder(bot: Bot, service: BotService):
+async def send_daily_reminder(bot: Bot, service: BotService) -> None:
     chat_id = service.config.chat_id
     if not chat_id:
         logger.warning("chat_id не задан — напоминание не отправлено")
         return
 
-    today = service.users.total_pushups_today()
+    total_today = service.users.total_pushups_today()
     current_day, days_remaining = service.period.get_day_info()
 
     message = (
@@ -64,12 +67,15 @@ async def send_daily_reminder(bot: Bot, service: BotService):
 
     try:
         await bot.send_message(chat_id=chat_id, text=message)
-        logger.info(f"Напоминание отправлено в чат {chat_id}. Сегодня уже сделано: {today} отжиманий")
+        logger.info(
+            f"Напоминание отправлено в чат {chat_id}. "
+            f"Сегодня уже сделано: {total_today} отжиманий"
+        )
     except Exception as e:
         logger.error(f"Ошибка при отправке напоминания: {e}")
 
 
-async def check_inactive_users(bot: Bot, service: BotService):
+async def check_inactive_users(bot: Bot, service: BotService) -> None:
     chat_id = service.config.chat_id
     if not chat_id:
         logger.warning("chat_id не задан — пропуск удаления неактивных")
@@ -77,6 +83,7 @@ async def check_inactive_users(bot: Bot, service: BotService):
 
     now = datetime.datetime.now()
     to_remove = []
+
     for user_id, user in service.users.all().items():
         status = user.activity_status(
             current_date=now,
@@ -101,11 +108,10 @@ async def check_inactive_users(bot: Bot, service: BotService):
 
     if to_remove:
         service.storage.save(service.config, service.users.all())
-
         logger.info(f"Сохранено после удаления {len(to_remove)} пользователей")
 
 
-async def check_inactivity_warnings(bot: Bot, service: BotService):
+async def check_inactivity_warnings(bot: Bot, service: BotService) -> None:
     chat_id = service.config.chat_id
     if not chat_id:
         logger.warning("chat_id не задан — пропуск предупреждений о неактивности")
@@ -113,6 +119,7 @@ async def check_inactivity_warnings(bot: Bot, service: BotService):
 
     now = datetime.datetime.now()
     warning_list = []
+
     for user_id, user in service.users.all().items():
         status = user.activity_status(
             current_date=now,

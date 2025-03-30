@@ -1,7 +1,8 @@
 import re
-import logging
 from typing import Tuple, Optional
+
 from services.openai_service import OpenAIClient
+from models.bot_models import CommentContext
 from utils.logger import get_named_logger
 
 logger = get_named_logger()
@@ -37,9 +38,12 @@ class PushupsParser:
         # Использование OpenAI для сложных случаев
         if self.openai_client:
             try:
-                prompt = f"Извлеки количество отжиманий из текста: '{text}'. Отвечай только числом."
-                system_prompt = "Ты распознаёшь число отжиманий из текста. Если нет, ответь 0."
-                result_text = self.openai_client.generate_comment(prompt, system_prompt, fallback=False)
+                prompt = f"Извлеки количество отжиманий из текста: '{text}'. Отвечай только числом. Если не уверен — 0."
+                result_text = self.openai_client.generate_comment(
+                    user_prompt=prompt,
+                    context=CommentContext.REPORT,
+                    fallback=False
+                )
 
                 match = re.search(r'\d+', result_text)
                 if match:
