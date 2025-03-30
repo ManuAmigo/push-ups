@@ -18,7 +18,6 @@ class ActivityStatus(str, Enum):
     INACTIVE = "inactive"
 
 
-# Конфигурация бота
 class BotConfig(BaseModel):
     chat_id: Optional[int] = None
     inactivity_days: int = 4
@@ -28,25 +27,26 @@ class BotConfig(BaseModel):
     challenge_end_date: date
 
     @field_validator("reminder_time")
-    def check_time_format(self, v: str) -> str:
+    def check_time_format(v: str) -> str:
         hours, minutes = map(int, v.split(":"))
         if not (0 <= hours <= 23 and 0 <= minutes <= 59):
             raise ValueError("Неверный формат времени")
         return v
 
     @field_validator("warning_days")
-    def check_warning_vs_inactive(self, v, info):
+    def check_warning_vs_inactive(v, info):
         inactivity_days = info.data.get("inactivity_days")
         if inactivity_days is not None and v >= inactivity_days:
             raise ValueError("warning_days должен быть меньше inactivity_days")
         return v
 
     @field_validator("challenge_end_date")
-    def check_dates(self, v, info):
+    def check_dates(v, info):
         start_date = info.data.get("challenge_start_date")
         if start_date and v <= start_date:
             raise ValueError("Дата окончания должна быть позже даты начала")
         return v
+
 
 
 # Информация о пользователе
