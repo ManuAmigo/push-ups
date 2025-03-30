@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     TELEGRAM_TOKEN: str = Field(..., alias="TELEGRAM_BOT_TOKEN")
     OPENAI_API_KEY: str = Field(default="", alias="OPENAI_API_KEY")
 
-    DATA_PATH: str = "data.json"
+    DATA_PATH: str = "pushups_bot_data.json"
 
     DEFAULT_REMINDER_TIME: str = Field(default="22:00", alias="DEFAULT_REMINDER_TIME")
     DEFAULT_INACTIVITY_DAYS: int = Field(default=4, alias="DEFAULT_INACTIVITY_DAYS")

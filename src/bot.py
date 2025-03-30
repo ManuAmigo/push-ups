@@ -108,6 +108,52 @@ class BotService:
             f"💪 Группа: {total_today} сегодня.\n\n{comment}"
         )
 
+    async def handle_mention(self, message: Message) -> None:
+        user_id = message.from_user.id
+        username = message.from_user.username or message.from_user.first_name
+        today = datetime.date.today()
+
+        logger.debug(f"🔔 Упоминание бота от @{username} ({user_id})")
+
+        user = self.users.get(user_id)
+        pushups_today = user.pushups_today if user and user.last_report_date == today else 0
+        total_pushups = user.total_pushups if user else 0
+
+        logger.debug(f"📊 Статистика @{username}: сегодня {pushups_today}, всего {total_pushups}")
+
+        system_prompt = f"""
+        Ты тренер серьезный тренер в спортзале.
+        Твоя задача - ответить на сообщение пользователя коротко.
+
+        Говори как серьезный тренер в спортзале:
+        - Используй короткие, ёмкие фразы с юмором
+        - Добавляй лёгкую иронию
+        - Используй эмодзи умеренно 😎💪
+
+        Информация о пользователе:
+        - Имя: {username}
+        - Сегодня отжался: {pushups_today} раз
+        - Всего отжиманий: {total_pushups}
+        """
+
+        user_prompt = message.text.strip()
+        logger.debug(f"🗣️ Промпт пользователя: {user_prompt}")
+
+        try:
+            reply = self.openai.generate_comment(
+                user_prompt,
+                system_prompt=system_prompt
+            )
+            logger.debug(f"💬 Ответ от OpenAI для @{username}: {reply}")
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка генерации упоминания через OpenAI: {e}")
+            reply = (
+                f"Физкульт-привет, @{username}! Вижу, ты уже отжался {pushups_today} сегодня, "
+                f"а всего {total_pushups}. Продолжай в том же духе! 💪"
+            )
+
+        await message.answer(reply)
+
     async def handle_mystats(self, message: Message) -> None:
         user_id = message.from_user.id
         user = self.users.get(user_id)
@@ -183,10 +229,18 @@ class BotService:
         logger.debug(f"/changemydailystats: @{user.username} {old_value} ➡️ {new_value} (+{delta})")
         await message.answer(f"Изменено: {old_value} ➡️ {new_value} отжиманий.")
 
-    async def handle_setgroup(self, message: Message) -> None:
+    async def handle_setgroup(self, message: Message, bot: Bot) -> None:
         if message.chat.type not in ("group", "supergroup"):
             logger.debug("/setgroup вызван не из группы")
             await message.answer("Эта команда работает только в группах.")
+            return
+        try:
+            member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+            if member.status not in ("creator", "administrator"):
+                await message.answer("⛔ Эта команда доступна только администраторам.")
+                return
+        except TelegramForbiddenError:
+            await message.answer("Не удалось проверить статус администратора.")
             return
 
         self.config.chat_id = message.chat.id

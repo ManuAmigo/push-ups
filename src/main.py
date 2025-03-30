@@ -57,8 +57,6 @@ if OPENAI_KEY:
 service = BotService(config, users, storage, openai_client)
 
 
-# === Команды ===
-
 @dp.message(Command("start"))
 async def start_cmd(message: Message):
     await message.answer("Привет! Отправь мне количество отжиманий или используй /help.")
@@ -90,7 +88,7 @@ async def change_stat_cmd(message: Message):
 
 @dp.message(Command("setgroup"))
 async def setgroup_cmd(message: Message):
-    await service.handle_setgroup(message)
+    await service.handle_setgroup(message, bot)
 
 @dp.message(Command("config"))
 async def config_cmd(message: Message):
@@ -100,7 +98,7 @@ async def config_cmd(message: Message):
 async def adminstats_cmd(message: Message):
     await service.handle_adminstats(message, bot)
 
-# === Приветствие новых участников ===
+
 
 @dp.chat_member()
 async def on_new_chat_member(event: ChatMemberUpdated):
@@ -116,13 +114,24 @@ async def on_new_chat_member(event: ChatMemberUpdated):
         )
         await service.handle_welcome_new(fake_message)
 
-# === Обработка всех сообщений ===
+
 
 @dp.message()
 async def any_text(message: Message):
-    await service.handle_message(message)
+    username = message.from_user.username or message.from_user.first_name
+    user_id = message.from_user.id
+    text = message.text or ""
 
-async def register_bot_commands(bot: Bot):
+    logger.debug(f"📩 Сообщение от @{username} ({user_id}): {text}")
+
+    if f"@{(await bot.get_me()).username}" in text:
+        logger.debug(f"🔔 Обнаружено упоминание бота в сообщении от @{username}")
+        await service.handle_mention(message)
+    else:
+        await service.handle_message(message)
+
+
+async def register_bot_commands(bot_instance: Bot):
     commands = [
         BotCommand(command="mystats", description="Моя статистика"),
         BotCommand(command="stats", description="Статистика группы"),
@@ -131,10 +140,10 @@ async def register_bot_commands(bot: Bot):
         BotCommand(command="config", description="Показать конфигурацию"),
         BotCommand(command="adminstats", description="Админ-статистика"),
     ]
-    await bot.delete_my_commands()
-    await bot.set_my_commands(commands)
+    await bot_instance.delete_my_commands()
+    await bot_instance.set_my_commands(commands)
 
-# === Запуск ===
+
 
 async def main():
     if not os.path.exists(settings.DATA_PATH):
