@@ -6,6 +6,8 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from colorlog import ColoredFormatter
+
 LOGS_DIR = Path("logs")
 LOGS_DIR.mkdir(exist_ok=True)
 
@@ -78,9 +80,16 @@ def setup_logger(mode: str = "named", log_file: str = None, level=logging.INFO) 
         indent=" " * 42
     )
 
-    console_formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(name)s:%(lineno)d | %(message)s",
-        datefmt="%m-%d %H:%M:%S"
+    console_formatter = ColoredFormatter(
+        fmt="%(log_color)s%(asctime)s | %(levelname)-8s | %(name)s:%(lineno)d | %(message)s",
+        datefmt="%m-%d %H:%M:%S",
+        log_colors={
+            'DEBUG': 'cyan',
+            'INFO': 'green',
+            'WARNING': 'yellow',
+            'ERROR': 'red',
+            'CRITICAL': 'bold_red',
+        }
     )
 
     file_handler = logging.FileHandler(log_path, encoding="utf-8")
