@@ -1,5 +1,7 @@
 import asyncio
 import os
+
+import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -13,10 +15,10 @@ from scheduler.reminder import schedule_reminders
 from services.openai_service import OpenAIClient
 from services.data_service import Storage
 from services.user_repository import UserRepository
-from utils.logger import setup_logger, get_named_logger
+from utils.logger import setup_logger, get_named_logger, LogMode
 
-setup_logger("named")
-logger = get_named_logger()
+setup_logger(mode=LogMode.NAMED, level=logging.INFO)
+logging = get_named_logger()
 
 # Загрузка переменных окружения
 load_dotenv()

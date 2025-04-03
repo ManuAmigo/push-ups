@@ -3,20 +3,29 @@ import logging
 import pathlib
 import textwrap
 import re
+from enum import Enum
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from colorlog import ColoredFormatter
 
-LOGS_DIR = Path("logs")
+
+# 🧭 Путь к logs рядом с файлом
+LOGS_DIR = Path(__file__).resolve().parent / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
-# --- 🧠 Хранилище разрешённых модулей ---
+
+# --- 🧠 Разрешённые модули ---
 _allowed_named_loggers = set()
 
 
+class LogMode(Enum):
+    ALL = "all"
+    NAMED = "named"
+    SILENT = "silent"
+
+
 class NamedFilter(logging.Filter):
-    """Пропускает только разрешённые модули"""
     def filter(self, record: logging.LogRecord) -> bool:
         return record.name in _allowed_named_loggers
 
@@ -32,21 +41,18 @@ class WrappedFormatter(logging.Formatter):
         parts = original.split(" | ", 3)
         if len(parts) < 4:
             return original
-        header = " | ".join(parts[:3])
+        header = " ".join(parts[:3])
         message = parts[3]
         wrapped = textwrap.fill(message, width=self.width, subsequent_indent=self.indent)
         return f"{header} | {wrapped}"
 
 
 def get_named_logger(level=logging.DEBUG) -> logging.Logger:
-    """
-    Возвращает логгер с именем текущего модуля, и добавляет его в список разрешённых.
-    """
     frame = inspect.stack()[1]
     module = inspect.getmodule(frame[0])
     filename = pathlib.Path(module.__file__).stem if module and module.__file__ else "__main__"
 
-    _allowed_named_loggers.add(filename)  # 💥 Регистрируем модуль как разрешённый
+    _allowed_named_loggers.add(filename)
     logger = logging.getLogger(filename)
     logger.setLevel(level)
     return logger
@@ -66,18 +72,16 @@ def cleanup_old_logs(days: int = 8):
                 logging.getLogger("logger").warning(f"⚠️ Не удалось удалить {log_file.name}: {e}")
 
 
-def setup_logger(mode: str = "named", log_file: str = None, level=logging.INFO) -> None:
+def setup_logger(mode: LogMode = LogMode.NAMED, log_file: str = None, level=logging.INFO) -> None:
     today_str = datetime.now().strftime("%Y-%m-%d")
     log_filename = log_file or f"bot_{today_str}.log"
     log_path = LOGS_DIR / log_filename
 
-    cleanup_old_logs(days=8)
+    cleanup_old_logs(days=30)
 
     file_formatter = WrappedFormatter(
         fmt="%(asctime)s | %(levelname)s | %(name)s:%(lineno)d | %(message)s",
-        datefmt="%m-%d %H:%M:%S",
-        width=100,
-        indent=" " * 42
+        datefmt="%m-%d %H:%M:%S"
     )
 
     console_formatter = ColoredFormatter(
@@ -98,24 +102,23 @@ def setup_logger(mode: str = "named", log_file: str = None, level=logging.INFO) 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(console_formatter)
 
-    if mode == "silent":
-        logging.getLogger().handlers.clear()
-        logging.getLogger().disabled = True
-        return
-
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
     root_logger.handlers.clear()
 
-    if mode == "all":
+    if mode == LogMode.SILENT:
+        root_logger.disabled = True
+        return
+
+    if mode == LogMode.ALL:
         root_logger.addHandler(file_handler)
         root_logger.addHandler(console_handler)
 
-    elif mode == "named":
+    elif mode == LogMode.NAMED:
         file_handler.addFilter(NamedFilter())
         console_handler.addFilter(NamedFilter())
         root_logger.addHandler(file_handler)
         root_logger.addHandler(console_handler)
 
     else:
-        raise ValueError("❌ Неверный режим логгирования. Используй 'all', 'named' или 'silent'")
+        raise ValueError(f"❌ Неверный режим логгирования: {mode}")
